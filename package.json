@@ -1,0 +1,33 @@
+{
+  "name": "custom-website-builder",
+  "version": "1.0.0",
+  "description": "This is a custom website builder that allows users to create and customize their own websites easily. It provides a user-friendly interface and various templates to choose from.",
+  "main": "index.js",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently --names api,frontend \"npm run dev:api\" \"npm run dev:frontend\"",
+    "dev:api": "npm --workspace api run dev",
+    "dev:frontend": "npm --workspace frontend run dev",
+    "build": "npm run build:api && npm run build:frontend",
+    "build:api": "npm --workspace @custom-website-builder/database run build && npm --workspace @custom-website-builder/node-registry run build && npm --workspace @custom-website-builder/website-templates run build && npm --workspace api run build",
+    "build:frontend": "npm --workspace @custom-website-builder/node-registry run build && npm --workspace frontend run build",
+    "build:registry": "npm --workspace @custom-website-builder/node-registry run build",
+    "build:templates": "npm --workspace @custom-website-builder/website-templates run build",
+    "lint": "npm run lint:frontend",
+    "lint:frontend": "npm --workspace frontend run lint",
+    "db:generate": "npm --workspace @custom-website-builder/database run generate",
+    "db:migrate": "npm --workspace @custom-website-builder/database run migrate",
+    "db:seed": "npm --workspace @custom-website-builder/database run seed",
+    "db:studio": "npm --workspace @custom-website-builder/database run studio"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

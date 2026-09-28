@@ -1,0 +1,262 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum LoginLogStatus {
+  SUCCESS
+  FAILED
+}
+
+model Role {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  users     User[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model User {
+  id                   String               @id @default(uuid()) @db.Uuid
+  email                String               @unique @db.VarChar(320)
+  passwordHash         String               @map("password_hash")
+  status               UserStatus           @default(ACTIVE)
+  roleId               String               @map("role_id") @db.Uuid
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+  role                 Role                 @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  refreshSessions      RefreshSession[]
+  loginLogs            LoginLog[]
+  organizationMembers  OrganizationMember[]
+
+  @@map("users")
+}
+
+enum OrganizationMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model Organization {
+  id        String               @id @default(uuid()) @db.Uuid
+  name      String               @db.VarChar(160)
+  slug      String               @unique @db.VarChar(160)
+  createdAt DateTime             @default(now()) @map("created_at")
+  updatedAt DateTime             @updatedAt @map("updated_at")
+  members   OrganizationMember[]
+  websites  Website[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String                 @id @default(uuid()) @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  userId         String                 @map("user_id") @db.Uuid
+  role           OrganizationMemberRole @default(MEMBER)
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+model Website {
+  id                        String             @id @default(uuid()) @db.Uuid
+  organizationId            String             @map("organization_id") @db.Uuid
+  name                      String             @db.VarChar(160)
+  slug                      String             @db.VarChar(160)
+  theme                     Json               @default("{}")
+  templateId                String?            @map("template_id") @db.VarChar(80)
+  templateVersion           Int?               @map("template_version")
+  currentPublishedVersionId String?            @unique @map("current_published_version_id") @db.Uuid
+  createdAt                 DateTime           @default(now()) @map("created_at")
+  updatedAt                 DateTime           @updatedAt @map("updated_at")
+  organization              Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pages                     Page[]
+  libraryItems              LibraryItem[]
+  mediaAssets               MediaAsset[]
+  publishedVersions         PublishedVersion[] @relation("WebsitePublications")
+  currentPublishedVersion   PublishedVersion?  @relation("CurrentPublished", fields: [currentPublishedVersionId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("websites")
+}
+
+model PublishedVersion {
+  id                String    @id @default(uuid()) @db.Uuid
+  websiteId         String    @map("website_id") @db.Uuid
+  version           Int
+  contentHash       String    @map("content_hash") @db.VarChar(64)
+  snapshot          Json
+  publishedAt       DateTime  @default(now()) @map("published_at")
+  publishedByUserId String?   @map("published_by_user_id") @db.Uuid
+  website           Website   @relation("WebsitePublications", fields: [websiteId], references: [id], onDelete: Cascade)
+  currentFor        Website?  @relation("CurrentPublished")
+
+  @@unique([websiteId, version])
+  @@index([websiteId])
+  @@map("published_versions")
+}
+
+model MediaAsset {
+  id           String   @id @default(uuid()) @db.Uuid
+  websiteId    String   @map("website_id") @db.Uuid
+  kind         String   @db.VarChar(40)
+  filename     String   @db.VarChar(255)
+  mimeType     String   @map("mime_type") @db.VarChar(120)
+  byteSize     Int      @map("byte_size")
+  width        Int?
+  height       Int?
+  url          String   @db.VarChar(2048)
+  provider     String   @db.VarChar(40)
+  providerId   String   @map("provider_id") @db.VarChar(512)
+  providerMeta Json     @default("{}") @map("provider_meta")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  website      Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@index([websiteId, kind])
+  @@unique([websiteId, provider, providerId])
+  @@map("media_assets")
+}
+
+model LibraryItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  websiteId  String   @map("website_id") @db.Uuid
+  name       String   @db.VarChar(160)
+  category   String?  @db.VarChar(160)
+  version    Int      @default(1)
+  definition Json
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  website    Website  @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  instances  Node[]
+
+  @@index([websiteId])
+  @@index([websiteId, category])
+  @@map("library_items")
+}
+
+model Page {
+  id        String    @id @default(uuid()) @db.Uuid
+  websiteId String    @map("website_id") @db.Uuid
+  parentId  String?   @map("parent_id") @db.Uuid
+  title     String    @db.VarChar(160)
+  slug      String    @db.VarChar(160)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  website   Website   @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  parent    Page?     @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Page[]    @relation("PageHierarchy")
+  sections  Section[]
+
+  @@unique([websiteId, slug])
+  @@index([websiteId, parentId, sortOrder])
+  @@map("pages")
+}
+
+model Section {
+  id        String   @id @default(uuid()) @db.Uuid
+  pageId    String   @map("page_id") @db.Uuid
+  name      String   @db.VarChar(160)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  nodes     Node[]
+
+  @@index([pageId, sortOrder])
+  @@map("sections")
+}
+
+model Node {
+  id                 String       @id @default(uuid()) @db.Uuid
+  sectionId          String       @map("section_id") @db.Uuid
+  parentId           String?      @map("parent_id") @db.Uuid
+  type               String       @db.VarChar(120)
+  name               String?      @db.VarChar(160)
+  data               Json         @default("{}")
+  sortOrder          Int          @default(0) @map("sort_order")
+  libraryItemId      String?      @map("library_item_id") @db.Uuid
+  libraryItemVersion Int?         @map("library_item_version")
+  libraryNodeKey     String?      @map("library_node_key") @db.VarChar(64)
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  section            Section      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  parent             Node?        @relation("NodeHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children           Node[]       @relation("NodeHierarchy")
+  libraryItem        LibraryItem? @relation(fields: [libraryItemId], references: [id], onDelete: SetNull)
+
+  @@index([sectionId, parentId, sortOrder])
+  @@index([libraryItemId])
+  @@map("nodes")
+}
+
+model RefreshSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.VarChar(128)
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("refresh_sessions")
+}
+
+model LoginLog {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String?        @map("user_id") @db.Uuid
+  status    LoginLogStatus
+  ipAddress String?        @map("ip_address") @db.VarChar(64)
+  createdAt DateTime       @default(now()) @map("created_at")
+  user      User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("login_logs")
+}
+
+model Permission {
+  id        String           @id @default(uuid()) @db.Uuid
+  code      String           @unique @db.VarChar(120)
+  createdAt DateTime         @default(now()) @map("created_at")
+  roles     RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id") @db.Uuid
+  permissionId String     @map("permission_id") @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
